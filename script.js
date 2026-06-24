@@ -1,5 +1,6 @@
 const TOTAL_CLIPS = 1000;
 const BATCH_SIZE = 60;
+const MAX_ACTIVE_VIDEOS = 12;
 
 const USERNAMES = [
   "brainrot.king", "skibidi.lord", "ohio.final.boss", "gyatt.machine", "rizz.god",
@@ -8,26 +9,48 @@ const USERNAMES = [
   "no.cap.vibes", "goated.takes", "ratio.machine", "based.department", "mid.curve",
 ];
 
-const CAPTION_PARTS = [
+const HOOKS = [
   "เมื่อแกงนี้ทำให้สมองไหลออกจากหู 🧠💀",
   "ถ้าไม่ดูคลิปนี้แกพลาดมาก fr fr",
-  "skibidi toilet ohio rizz ลำดับที่ {n}",
+  "skibidi toilet ohio rizz",
   "gyatt!! ใครเห็นด้วยยกมือ ✋",
-  "sigma grindset วันที่ {n} ของการตื่นตี 4",
+  "sigma grindset ตื่นตี 4 ทุกวัน",
   "no cap นี่คือคลิปที่ดีที่สุดในชีวิต",
   "เอ็นพีซีพูดอะไรไม่รู้แต่ฟังละเข้าใจ",
-  "เลขมงคลวันนี้คือ {n} fanum tax ด้วย",
+  "fanum tax โดนยึดอีกแล้ว",
   "บอกเลยว่า bussin ระดับตำนาน 🔥",
-  "ใครงงยกมือ มันคือ brainrot ep.{n}",
+  "ใครงงยกมือ มันคือ brainrot",
+  "rizz level สูงปรี๊ด",
+  "mewing maxing ก่อนนอนทุกคืน",
+  "gigachad cooking ในครัวตอนตี 3",
+  "deadass ไม่คิดว่าจะเจอแบบนี้",
+  "ตอนนี้คือ sus amongus ชัดๆ",
+];
+
+const TOPICS = [
+  "เอพิโสดที่ {n}",
+  "ep.{n}",
+  "ลำดับที่ {n}",
+  "ตอนที่ {n} ของซีรีส์",
+  "เคสที่ {n} วันนี้",
+  "ความจัดที่ {n}",
+  "เรื่องเล่าที่ {n}",
+  "คลิปลับหมายเลข {n}",
+  "เรื่องที่ {n} ของวัน",
+  "ฉบับที่ {n}",
 ];
 
 const SAMPLE_VIDEOS = [
   "https://www.w3schools.com/html/mov_bbb.mp4",
   "https://media.w3.org/2010/05/sintel/trailer.mp4",
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/friday.mp4",
   "https://download.samplelib.com/mp4/sample-5s.mp4",
   "https://download.samplelib.com/mp4/sample-10s.mp4",
   "https://download.samplelib.com/mp4/sample-15s.mp4",
+  "https://download.samplelib.com/mp4/sample-20s.mp4",
+  "https://media.w3.org/2010/05/bunny/movie.mp4",
+  "https://media.w3.org/2010/05/video/movie_300.mp4",
 ];
 
 function seededRandom(seed) {
@@ -50,14 +73,15 @@ function generateMockData(total, seedOffset = 0) {
   for (let i = 1; i <= total; i++) {
     const rand = seededRandom(i * 9973 + 17 + seedOffset * 104729);
     const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
-    const captionTemplate = CAPTION_PARTS[Math.floor(rand() * CAPTION_PARTS.length)];
-    const caption = captionTemplate.replace("{n}", i);
+    const hook = HOOKS[Math.floor(rand() * HOOKS.length)];
+    const topic = TOPICS[Math.floor(rand() * TOPICS.length)].replace("{n}", i);
     items.push({
       id: i,
       username: `${username}${Math.floor(rand() * 999)}`,
-      caption,
+      caption: `${hook} — ${topic}`,
       thumbnail: `https://picsum.photos/seed/brainrot${seedOffset}_${i}/300/533`,
       video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
+      hue: Math.floor(rand() * 360),
       views: Math.floor(rand() * 5_000_000) + 1000,
       likes: Math.floor(rand() * 900_000) + 100,
       comments: Math.floor(rand() * 20_000),
@@ -81,19 +105,45 @@ const refreshBtnEl = document.getElementById("refreshBtn");
 
 totalCountEl.textContent = TOTAL_CLIPS;
 
+let activeVideos = new Set();
+let waitingVideos = new Set();
+
+function tryPlayVideo(video) {
+  if (activeVideos.size >= MAX_ACTIVE_VIDEOS) {
+    waitingVideos.add(video);
+    return;
+  }
+  waitingVideos.delete(video);
+  activeVideos.add(video);
+  if (!video.src) video.src = video.dataset.src;
+  video.play().catch(() => {});
+}
+
+function releaseVideo(video) {
+  const wasActive = activeVideos.delete(video);
+  waitingVideos.delete(video);
+  video.pause();
+  if (video.src) {
+    video.removeAttribute("src");
+    video.load();
+  }
+  if (wasActive) {
+    const next = waitingVideos.values().next().value;
+    if (next) tryPlayVideo(next);
+  }
+}
+
 const videoObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
-      const video = entry.target;
       if (entry.isIntersecting) {
-        if (!video.src) video.src = video.dataset.src;
-        video.play().catch(() => {});
+        tryPlayVideo(entry.target);
       } else {
-        video.pause();
+        releaseVideo(entry.target);
       }
     });
   },
-  { rootMargin: "150px 0px", threshold: 0.25 }
+  { rootMargin: "100px 0px", threshold: 0.25 }
 );
 
 function cardTemplate(item) {
@@ -101,7 +151,7 @@ function cardTemplate(item) {
   card.className = "card";
   card.dataset.id = item.id;
   card.innerHTML = `
-    <video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
+    <video class="card-media" style="filter: hue-rotate(${item.hue}deg) saturate(1.2)" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
       <div class="card-views">▶ ${formatCount(item.views)}</div>
@@ -124,6 +174,8 @@ function loadNextBatch() {
 
 function resetGrid(items) {
   videoObserver.disconnect();
+  activeVideos = new Set();
+  waitingVideos = new Set();
   filteredItems = items;
   loadedCount = 0;
   gridEl.innerHTML = "";

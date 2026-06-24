@@ -102,9 +102,12 @@ async function fetchYouTubeBatch() {
     });
 }
 
+// Disabled: Reddit's June 2026 "Responsible Builder Policy" change requires
+// an approved app before API access is granted — self-serve key creation no
+// longer works. Re-enable by setting this to true once approved.
 const redditAfter = {};
 const redditExhausted = new Set();
-let redditAvailable = true;
+let redditAvailable = false;
 let redditSubIndex = 0;
 
 async function fetchRedditBatch() {
@@ -285,7 +288,6 @@ function resetGrid() {
   Object.keys(redditAfter).forEach((k) => delete redditAfter[k]);
   ytExhausted.clear();
   redditExhausted.clear();
-  redditAvailable = true;
   gridEl.innerHTML = "";
   loadedCountEl.textContent = 0;
   loadMore();

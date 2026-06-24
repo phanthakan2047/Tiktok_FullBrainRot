@@ -1,6 +1,6 @@
 const TOTAL_CLIPS = 1000;
 const BATCH_SIZE = 60;
-const MAX_ACTIVE_VIDEOS = 12;
+const MAX_ACTIVE_VIDEOS = 20;
 
 const USERNAMES = [
   "brainrot.king", "skibidi.lord", "ohio.final.boss", "gyatt.machine", "rizz.god",
@@ -47,9 +47,6 @@ const SAMPLE_VIDEOS = [
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/friday.mp4",
   "https://download.samplelib.com/mp4/sample-5s.mp4",
   "https://download.samplelib.com/mp4/sample-10s.mp4",
-  "https://download.samplelib.com/mp4/sample-15s.mp4",
-  "https://download.samplelib.com/mp4/sample-20s.mp4",
-  "https://media.w3.org/2010/05/bunny/movie.mp4",
   "https://media.w3.org/2010/05/video/movie_300.mp4",
 ];
 
@@ -68,6 +65,21 @@ function formatCount(n) {
   return String(n);
 }
 
+function makePoster(id, seedOffset) {
+  const hue = (id * 53 + seedOffset * 7) % 360;
+  const hue2 = (hue + 45) % 360;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="533">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0%" stop-color="hsl(${hue},70%,42%)"/>` +
+    `<stop offset="100%" stop-color="hsl(${hue2},70%,22%)"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="300" height="533" fill="url(#g)"/>` +
+    `<text x="50%" y="50%" font-size="80" text-anchor="middle" dominant-baseline="middle" fill="white" opacity="0.85" font-family="sans-serif">#${id}</text>` +
+    `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 function generateMockData(total, seedOffset = 0) {
   const items = [];
   for (let i = 1; i <= total; i++) {
@@ -75,12 +87,11 @@ function generateMockData(total, seedOffset = 0) {
     const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
     const hook = HOOKS[Math.floor(rand() * HOOKS.length)];
     const topic = TOPICS[Math.floor(rand() * TOPICS.length)].replace("{n}", i);
-    const photoId = (i - 1 + seedOffset) % 1084;
     items.push({
       id: i,
       username: `${username}${Math.floor(rand() * 999)}`,
       caption: `${hook} — ${topic}`,
-      thumbnail: `https://picsum.photos/id/${photoId}/300/533`,
+      thumbnail: makePoster(i, seedOffset),
       video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
       views: Math.floor(rand() * 5_000_000) + 1000,
       likes: Math.floor(rand() * 900_000) + 100,

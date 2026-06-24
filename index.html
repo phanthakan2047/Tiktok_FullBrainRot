@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FullBrainRot — Mock TikTok Explorer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🧠 FullBrainRot</div>
+    <input id="searchInput" class="search" type="text" placeholder="ค้นหา username หรือ caption...">
+    <div class="counter">โหลดแล้ว <span id="loadedCount">0</span> / <span id="totalCount">0</span> คลิป</div>
+  </header>
+
+  <main id="grid" class="grid"></main>
+
+  <div id="sentinel" class="sentinel"></div>
+
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal-player">
+      <button id="closeModal" class="close-btn">&times;</button>
+      <button id="prevBtn" class="nav-btn prev">&#8249;</button>
+      <video id="modalVideo" class="modal-video" loop playsinline></video>
+      <div class="modal-info">
+        <div class="modal-user">@<span id="modalUsername"></span></div>
+        <div class="modal-caption" id="modalCaption"></div>
+        <div class="modal-stats">
+          <span>❤️ <span id="modalLikes"></span></span>
+          <span>💬 <span id="modalComments"></span></span>
+          <span>↗️ <span id="modalShares"></span></span>
+        </div>
+      </div>
+      <button id="nextBtn" class="nav-btn next">&#8250;</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

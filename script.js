@@ -75,13 +75,13 @@ function generateMockData(total, seedOffset = 0) {
     const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
     const hook = HOOKS[Math.floor(rand() * HOOKS.length)];
     const topic = TOPICS[Math.floor(rand() * TOPICS.length)].replace("{n}", i);
+    const photoId = (i - 1 + seedOffset) % 1084;
     items.push({
       id: i,
       username: `${username}${Math.floor(rand() * 999)}`,
       caption: `${hook} — ${topic}`,
-      thumbnail: `https://picsum.photos/seed/brainrot${seedOffset}_${i}/300/533`,
+      thumbnail: `https://picsum.photos/id/${photoId}/300/533`,
       video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
-      hue: Math.floor(rand() * 360),
       views: Math.floor(rand() * 5_000_000) + 1000,
       likes: Math.floor(rand() * 900_000) + 100,
       comments: Math.floor(rand() * 20_000),
@@ -151,7 +151,7 @@ function cardTemplate(item) {
   card.className = "card";
   card.dataset.id = item.id;
   card.innerHTML = `
-    <video class="card-media" style="filter: hue-rotate(${item.hue}deg) saturate(1.2)" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
+    <video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
       <div class="card-views">▶ ${formatCount(item.views)}</div>

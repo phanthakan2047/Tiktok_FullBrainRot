@@ -38,6 +38,21 @@ body {
   outline: none;
 }
 
+.refresh-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid #333;
+  background: #1f1f21;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.refresh-btn:hover {
+  background: #2a2a2c;
+}
+
 .counter {
   font-size: 13px;
   color: #aaa;
@@ -60,15 +75,16 @@ body {
   background: #1a1a1c;
 }
 
-.card img {
+.card-media {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  background: #1a1a1c;
   transition: transform 0.2s ease;
 }
 
-.card:hover img {
+.card:hover .card-media {
   transform: scale(1.04);
 }
 

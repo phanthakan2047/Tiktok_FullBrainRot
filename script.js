@@ -21,6 +21,15 @@ const CAPTION_PARTS = [
   "ใครงงยกมือ มันคือ brainrot ep.{n}",
 ];
 
+const SAMPLE_VIDEOS = [
+  "https://www.w3schools.com/html/mov_bbb.mp4",
+  "https://media.w3.org/2010/05/sintel/trailer.mp4",
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+  "https://download.samplelib.com/mp4/sample-5s.mp4",
+  "https://download.samplelib.com/mp4/sample-10s.mp4",
+  "https://download.samplelib.com/mp4/sample-15s.mp4",
+];
+
 function seededRandom(seed) {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
@@ -36,18 +45,19 @@ function formatCount(n) {
   return String(n);
 }
 
-function generateMockData(total) {
+function generateMockData(total, seedOffset = 0) {
   const items = [];
   for (let i = 1; i <= total; i++) {
-    const rand = seededRandom(i * 9973 + 17);
+    const rand = seededRandom(i * 9973 + 17 + seedOffset * 104729);
     const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
-    const captionTemplate = CAPTION_PARTS[i % CAPTION_PARTS.length];
+    const captionTemplate = CAPTION_PARTS[Math.floor(rand() * CAPTION_PARTS.length)];
     const caption = captionTemplate.replace("{n}", i);
     items.push({
       id: i,
       username: `${username}${Math.floor(rand() * 999)}`,
       caption,
-      thumbnail: `https://picsum.photos/seed/brainrot${i}/300/533`,
+      thumbnail: `https://picsum.photos/seed/brainrot${seedOffset}_${i}/300/533`,
+      video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
       views: Math.floor(rand() * 5_000_000) + 1000,
       likes: Math.floor(rand() * 900_000) + 100,
       comments: Math.floor(rand() * 20_000),
@@ -57,7 +67,7 @@ function generateMockData(total) {
   return items;
 }
 
-const allItems = generateMockData(TOTAL_CLIPS);
+let allItems = generateMockData(TOTAL_CLIPS);
 
 let filteredItems = allItems;
 let loadedCount = 0;
@@ -67,21 +77,38 @@ const sentinelEl = document.getElementById("sentinel");
 const loadedCountEl = document.getElementById("loadedCount");
 const totalCountEl = document.getElementById("totalCount");
 const searchInputEl = document.getElementById("searchInput");
+const refreshBtnEl = document.getElementById("refreshBtn");
 
 totalCountEl.textContent = TOTAL_CLIPS;
+
+const videoObserver = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      const video = entry.target;
+      if (entry.isIntersecting) {
+        if (!video.src) video.src = video.dataset.src;
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    });
+  },
+  { rootMargin: "150px 0px", threshold: 0.25 }
+);
 
 function cardTemplate(item) {
   const card = document.createElement("div");
   card.className = "card";
   card.dataset.id = item.id;
   card.innerHTML = `
-    <img src="${item.thumbnail}" alt="${item.caption}" loading="lazy">
+    <video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
       <div class="card-views">▶ ${formatCount(item.views)}</div>
     </div>
   `;
   card.addEventListener("click", () => openModal(item.id));
+  videoObserver.observe(card.querySelector(".card-media"));
   return card;
 }
 
@@ -96,6 +123,7 @@ function loadNextBatch() {
 }
 
 function resetGrid(items) {
+  videoObserver.disconnect();
   filteredItems = items;
   loadedCount = 0;
   gridEl.innerHTML = "";
@@ -103,7 +131,7 @@ function resetGrid(items) {
   loadNextBatch();
 }
 
-const observer = new IntersectionObserver(
+const scrollObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) loadNextBatch();
@@ -111,7 +139,7 @@ const observer = new IntersectionObserver(
   },
   { rootMargin: "600px" }
 );
-observer.observe(sentinelEl);
+scrollObserver.observe(sentinelEl);
 
 let searchDebounce;
 searchInputEl.addEventListener("input", () => {
@@ -131,14 +159,11 @@ searchInputEl.addEventListener("input", () => {
   }, 200);
 });
 
-const SAMPLE_VIDEOS = [
-  "https://www.w3schools.com/html/mov_bbb.mp4",
-  "https://media.w3.org/2010/05/sintel/trailer.mp4",
-  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-  "https://download.samplelib.com/mp4/sample-5s.mp4",
-  "https://download.samplelib.com/mp4/sample-10s.mp4",
-  "https://download.samplelib.com/mp4/sample-15s.mp4",
-];
+refreshBtnEl.addEventListener("click", () => {
+  allItems = generateMockData(TOTAL_CLIPS, Date.now());
+  searchInputEl.value = "";
+  resetGrid(allItems);
+});
 
 const modalOverlayEl = document.getElementById("modalOverlay");
 const modalVideoEl = document.getElementById("modalVideo");
@@ -157,7 +182,7 @@ function openModal(id) {
   currentModalId = id;
   const item = allItems.find((i) => i.id === id);
   if (!item) return;
-  modalVideoEl.src = SAMPLE_VIDEOS[item.id % SAMPLE_VIDEOS.length];
+  modalVideoEl.src = item.video;
   modalVideoEl.currentTime = 0;
   modalVideoEl.play().catch(() => {});
   modalUsernameEl.textContent = item.username;

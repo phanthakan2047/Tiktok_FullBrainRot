@@ -1,221 +1,300 @@
-const TOTAL_CLIPS = 1000;
-const BATCH_SIZE = 60;
+const BATCH_VIDEO_RESULTS = 50;
+const MAX_ACTIVE_VIDEOS = 16;
 
-const USERNAMES = [
-  "brainrot.king", "skibidi.lord", "ohio.final.boss", "gyatt.machine", "rizz.god",
-  "sigma.grindset", "fanum.tax.collector", "npc.streamer", "mewing.master", "edging.irl",
-  "gigachad.cooking", "cap.or.no.cap", "deadass.fr", "sus.amongus", "bussin.recipes",
-  "no.cap.vibes", "goated.takes", "ratio.machine", "based.department", "mid.curve",
+const YT_QUERIES = [
+  "skibidi toilet shorts",
+  "ohio rizz shorts",
+  "sigma grindset shorts",
+  "brainrot meme shorts",
+  "funny fail shorts",
+  "oddly satisfying shorts",
+  "amazing life hack shorts",
+  "cute animals shorts",
 ];
 
-const HOOKS = [
-  "เมื่อแกงนี้ทำให้สมองไหลออกจากหู 🧠💀",
-  "ถ้าไม่ดูคลิปนี้แกพลาดมาก fr fr",
-  "skibidi toilet ohio rizz",
-  "gyatt!! ใครเห็นด้วยยกมือ ✋",
-  "sigma grindset ตื่นตี 4 ทุกวัน",
-  "no cap นี่คือคลิปที่ดีที่สุดในชีวิต",
-  "เอ็นพีซีพูดอะไรไม่รู้แต่ฟังละเข้าใจ",
-  "fanum tax โดนยึดอีกแล้ว",
-  "บอกเลยว่า bussin ระดับตำนาน 🔥",
-  "ใครงงยกมือ มันคือ brainrot",
-  "rizz level สูงปรี๊ด",
-  "mewing maxing ก่อนนอนทุกคืน",
-  "gigachad cooking ในครัวตอนตี 3",
-  "deadass ไม่คิดว่าจะเจอแบบนี้",
-  "ตอนนี้คือ sus amongus ชัดๆ",
+const REDDIT_SUBS = [
+  "ContagiousLaughter",
+  "Unexpected",
+  "nextfuckinglevel",
+  "tiktokcringe",
 ];
-
-const TOPICS = [
-  "เอพิโสดที่ {n}",
-  "ep.{n}",
-  "ลำดับที่ {n}",
-  "ตอนที่ {n} ของซีรีส์",
-  "เคสที่ {n} วันนี้",
-  "ความจัดที่ {n}",
-  "เรื่องเล่าที่ {n}",
-  "คลิปลับหมายเลข {n}",
-  "เรื่องที่ {n} ของวัน",
-  "ฉบับที่ {n}",
-];
-
-// Used only inside the full-screen modal (one video at a time, so network
-// limits / file size never become an issue there).
-const SAMPLE_VIDEOS = [
-  "https://www.w3schools.com/html/mov_bbb.mp4",
-  "https://media.w3.org/2010/05/sintel/trailer.mp4",
-  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
-  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/friday.mp4",
-  "https://download.samplelib.com/mp4/sample-5s.mp4",
-  "https://download.samplelib.com/mp4/sample-10s.mp4",
-  "https://media.w3.org/2010/05/video/movie_300.mp4",
-];
-
-function seededRandom(seed) {
-  let s = seed % 2147483647;
-  if (s <= 0) s += 2147483646;
-  return function () {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
 
 function formatCount(n) {
+  if (!n) return "0";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return String(n);
 }
 
-function generateMockData(total, seedOffset = 0) {
-  const items = [];
-  for (let i = 1; i <= total; i++) {
-    const rand = seededRandom(i * 9973 + 17 + seedOffset * 104729);
-    const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
-    const hook = HOOKS[Math.floor(rand() * HOOKS.length)];
-    const topic = TOPICS[Math.floor(rand() * TOPICS.length)].replace("{n}", i);
-    const hue = Math.floor(rand() * 360);
-    items.push({
-      id: i,
-      username: `${username}${Math.floor(rand() * 999)}`,
-      caption: `${hook} — ${topic}`,
-      hue,
-      blobs: Array.from({ length: 4 }, () => ({
-        speed: 0.4 + rand() * 0.8,
-        offset: rand() * Math.PI * 2,
-        radiusX: 0.18 + rand() * 0.14,
-        radiusY: 0.18 + rand() * 0.14,
-        hueShift: Math.floor(rand() * 120),
-      })),
-      video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
-      views: Math.floor(rand() * 5_000_000) + 1000,
-      likes: Math.floor(rand() * 900_000) + 100,
-      comments: Math.floor(rand() * 20_000),
-      shares: Math.floor(rand() * 8_000),
-    });
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return items;
+  return arr;
 }
 
-let allItems = generateMockData(TOTAL_CLIPS);
+let ytQueryIndex = 0;
+const ytPageTokens = {};
+const ytExhausted = new Set();
 
-let filteredItems = allItems;
+async function fetchYouTubeBatch() {
+  if (!CONFIG.YOUTUBE_API_KEY || CONFIG.YOUTUBE_API_KEY.startsWith("YOUR_")) {
+    throw new Error("ยังไม่ได้ตั้งค่า YOUTUBE_API_KEY ใน config.js");
+  }
+  if (ytExhausted.size >= YT_QUERIES.length) return [];
+
+  const query = YT_QUERIES[ytQueryIndex % YT_QUERIES.length];
+  ytQueryIndex++;
+  if (ytExhausted.has(query)) return [];
+
+  const searchParams = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    videoDuration: "short",
+    maxResults: String(BATCH_VIDEO_RESULTS),
+    q: query,
+    key: CONFIG.YOUTUBE_API_KEY,
+  });
+  if (ytPageTokens[query]) searchParams.set("pageToken", ytPageTokens[query]);
+
+  const searchRes = await fetch(`https://www.googleapis.com/youtube/v3/search?${searchParams}`);
+  if (!searchRes.ok) {
+    const body = await searchRes.json().catch(() => null);
+    const msg = body?.error?.message || `HTTP ${searchRes.status}`;
+    throw new Error(`YouTube: ${msg}`);
+  }
+  const searchData = await searchRes.json();
+
+  if (searchData.nextPageToken) {
+    ytPageTokens[query] = searchData.nextPageToken;
+  } else {
+    ytExhausted.add(query);
+  }
+
+  const videoIds = searchData.items.map((it) => it.id.videoId).filter(Boolean);
+  if (videoIds.length === 0) return [];
+
+  const statsParams = new URLSearchParams({
+    part: "statistics",
+    id: videoIds.join(","),
+    key: CONFIG.YOUTUBE_API_KEY,
+  });
+  const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?${statsParams}`);
+  const statsData = statsRes.ok ? await statsRes.json() : { items: [] };
+  const statsById = new Map(statsData.items.map((it) => [it.id, it.statistics]));
+
+  return searchData.items
+    .filter((it) => it.id.videoId)
+    .map((it) => {
+      const stats = statsById.get(it.id.videoId) || {};
+      return {
+        id: `yt-${it.id.videoId}`,
+        source: "youtube",
+        videoId: it.id.videoId,
+        username: it.snippet.channelTitle,
+        caption: it.snippet.title,
+        thumbnail: it.snippet.thumbnails?.high?.url || it.snippet.thumbnails?.default?.url,
+        views: Number(stats.viewCount) || 0,
+        likes: Number(stats.likeCount) || 0,
+        comments: Number(stats.commentCount) || 0,
+      };
+    });
+}
+
+const redditAfter = {};
+const redditExhausted = new Set();
+let redditAvailable = true;
+let redditSubIndex = 0;
+
+async function fetchRedditBatch() {
+  if (!redditAvailable) return [];
+  if (redditExhausted.size >= REDDIT_SUBS.length) return [];
+
+  const sub = REDDIT_SUBS[redditSubIndex % REDDIT_SUBS.length];
+  redditSubIndex++;
+  if (redditExhausted.has(sub)) return [];
+
+  const params = new URLSearchParams({ limit: "50" });
+  if (redditAfter[sub]) params.set("after", redditAfter[sub]);
+
+  let res;
+  try {
+    res = await fetch(`/api/reddit/${sub}?${params}`);
+  } catch (e) {
+    redditAvailable = false;
+    throw new Error(`เข้า Reddit proxy ไม่ได้: ${e.message}`);
+  }
+  if (!res.ok) {
+    redditAvailable = false;
+    throw new Error(`Reddit บล็อกการเข้าถึง (HTTP ${res.status}) — อาจเป็นเพราะ IP/เครือข่ายนี้`);
+  }
+  const data = await res.json();
+
+  if (data.data.after) {
+    redditAfter[sub] = data.data.after;
+  } else {
+    redditExhausted.add(sub);
+  }
+
+  return data.data.children
+    .map((c) => c.data)
+    .filter((d) => d.is_video && d.media?.reddit_video?.fallback_url)
+    .map((d) => ({
+      id: `rd-${d.id}`,
+      source: "reddit",
+      videoUrl: d.media.reddit_video.fallback_url,
+      username: d.author,
+      caption: d.title,
+      thumbnail: d.thumbnail && d.thumbnail.startsWith("http") ? d.thumbnail : null,
+      views: 0,
+      likes: d.ups || 0,
+      comments: d.num_comments || 0,
+    }));
+}
+
+let allItems = [];
+let filteredItems = [];
 let loadedCount = 0;
+let loading = false;
 
 const gridEl = document.getElementById("grid");
 const sentinelEl = document.getElementById("sentinel");
 const loadedCountEl = document.getElementById("loadedCount");
-const totalCountEl = document.getElementById("totalCount");
+const statusTextEl = document.getElementById("statusText");
 const searchInputEl = document.getElementById("searchInput");
 const refreshBtnEl = document.getElementById("refreshBtn");
 
-totalCountEl.textContent = TOTAL_CLIPS;
+let activeVideos = new Set();
+let waitingVideos = new Set();
 
-const CANVAS_W = 180;
-const CANVAS_H = 320;
-
-function drawFrame(canvas, item, t) {
-  const ctx = canvas.__ctx;
-  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-
-  const grad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
-  grad.addColorStop(0, `hsl(${item.hue}, 65%, 38%)`);
-  grad.addColorStop(1, `hsl(${(item.hue + 60) % 360}, 65%, 16%)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-  item.blobs.forEach((b, idx) => {
-    const phase = t * b.speed + b.offset;
-    const x = CANVAS_W / 2 + Math.sin(phase) * CANVAS_W * 0.3;
-    const y = CANVAS_H / 2 + Math.cos(phase * 1.4 + idx) * CANVAS_H * 0.3;
-    ctx.beginPath();
-    ctx.fillStyle = `hsla(${(item.hue + b.hueShift) % 360}, 75%, 60%, 0.5)`;
-    ctx.ellipse(x, y, CANVAS_W * b.radiusX, CANVAS_H * b.radiusY, 0, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.font = "bold 30px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(`#${item.id}`, CANVAS_W / 2, CANVAS_H / 2);
+function tryPlayVideo(video) {
+  if (activeVideos.size >= MAX_ACTIVE_VIDEOS) {
+    waitingVideos.add(video);
+    return;
+  }
+  waitingVideos.delete(video);
+  activeVideos.add(video);
+  if (!video.src) video.src = video.dataset.src;
+  video.play().catch(() => {});
 }
 
-const runningCanvases = new Map();
-
-function startAnimation(canvas) {
-  if (runningCanvases.has(canvas)) return;
-  const item = canvas.__item;
-  const start = performance.now();
-  const tick = (now) => {
-    drawFrame(canvas, item, (now - start) / 1000);
-    runningCanvases.set(canvas, requestAnimationFrame(tick));
-  };
-  runningCanvases.set(canvas, requestAnimationFrame(tick));
+function releaseVideo(video) {
+  const wasActive = activeVideos.delete(video);
+  waitingVideos.delete(video);
+  video.pause();
+  if (video.src) {
+    video.removeAttribute("src");
+    video.load();
+  }
+  if (wasActive) {
+    const next = waitingVideos.values().next().value;
+    if (next) tryPlayVideo(next);
+  }
 }
 
-function stopAnimation(canvas) {
-  const rafId = runningCanvases.get(canvas);
-  if (rafId) cancelAnimationFrame(rafId);
-  runningCanvases.delete(canvas);
-}
-
-const animationObserver = new IntersectionObserver(
+const videoObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        startAnimation(entry.target);
+        tryPlayVideo(entry.target);
       } else {
-        stopAnimation(entry.target);
+        releaseVideo(entry.target);
       }
     });
   },
-  { rootMargin: "150px 0px", threshold: 0.1 }
+  { rootMargin: "100px 0px", threshold: 0.25 }
 );
 
 function cardTemplate(item) {
   const card = document.createElement("div");
   card.className = "card";
   card.dataset.id = item.id;
+
+  const badge = item.source === "youtube" ? "▶️ YouTube" : "👽 Reddit";
+  const media =
+    item.source === "reddit"
+      ? `<video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail || ""}" data-src="${item.videoUrl}"></video>`
+      : `<img class="card-media" src="${item.thumbnail || ""}" alt="${item.caption}" loading="lazy">`;
+
   card.innerHTML = `
-    <canvas class="card-media" width="${CANVAS_W}" height="${CANVAS_H}"></canvas>
+    ${media}
+    <div class="source-badge">${badge}</div>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
-      <div class="card-views">▶ ${formatCount(item.views)}</div>
+      <div class="card-views">▶ ${formatCount(item.views || item.likes)}</div>
     </div>
   `;
-  const canvas = card.querySelector(".card-media");
-  canvas.__ctx = canvas.getContext("2d");
-  canvas.__item = item;
   card.addEventListener("click", () => openModal(item.id));
-  animationObserver.observe(canvas);
+  if (item.source === "reddit") {
+    videoObserver.observe(card.querySelector(".card-media"));
+  }
   return card;
 }
 
-function loadNextBatch() {
-  if (loadedCount >= filteredItems.length) return;
-  const nextBatch = filteredItems.slice(loadedCount, loadedCount + BATCH_SIZE);
+function appendItems(items) {
+  allItems = allItems.concat(items);
+  filteredItems = filteredItems.concat(items);
   const fragment = document.createDocumentFragment();
-  nextBatch.forEach((item) => fragment.appendChild(cardTemplate(item)));
+  items.forEach((item) => fragment.appendChild(cardTemplate(item)));
   gridEl.appendChild(fragment);
-  loadedCount += nextBatch.length;
+  loadedCount += items.length;
   loadedCountEl.textContent = loadedCount;
 }
 
-function resetGrid(items) {
-  animationObserver.disconnect();
-  runningCanvases.forEach((rafId) => cancelAnimationFrame(rafId));
-  runningCanvases.clear();
-  filteredItems = items;
+async function loadMore() {
+  if (loading) return;
+  loading = true;
+  statusTextEl.textContent = "กำลังโหลด...";
+  try {
+    const [ytResult, rdResult] = await Promise.allSettled([fetchYouTubeBatch(), fetchRedditBatch()]);
+    const newItems = [];
+    const problems = [];
+
+    if (ytResult.status === "fulfilled") newItems.push(...ytResult.value);
+    else problems.push(ytResult.reason.message);
+
+    if (rdResult.status === "fulfilled") newItems.push(...rdResult.value);
+    else problems.push(rdResult.reason.message);
+
+    shuffle(newItems);
+    if (newItems.length > 0) appendItems(newItems);
+
+    if (problems.length > 0) {
+      statusTextEl.textContent = problems.join(" | ");
+    } else if (newItems.length === 0) {
+      statusTextEl.textContent = "ไม่มีคลิปใหม่แล้ว";
+    } else {
+      statusTextEl.textContent = "พร้อมแล้ว";
+    }
+  } finally {
+    loading = false;
+  }
+}
+
+function resetGrid() {
+  videoObserver.disconnect();
+  activeVideos = new Set();
+  waitingVideos = new Set();
+  allItems = [];
+  filteredItems = [];
   loadedCount = 0;
+  ytQueryIndex = 0;
+  redditSubIndex = 0;
+  Object.keys(ytPageTokens).forEach((k) => delete ytPageTokens[k]);
+  Object.keys(redditAfter).forEach((k) => delete redditAfter[k]);
+  ytExhausted.clear();
+  redditExhausted.clear();
+  redditAvailable = true;
   gridEl.innerHTML = "";
   loadedCountEl.textContent = 0;
-  loadNextBatch();
+  loadMore();
 }
 
 const scrollObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting) loadNextBatch();
+      if (entry.isIntersecting) loadMore();
     });
   },
   { rootMargin: "600px" }
@@ -227,27 +306,32 @@ searchInputEl.addEventListener("input", () => {
   clearTimeout(searchDebounce);
   searchDebounce = setTimeout(() => {
     const query = searchInputEl.value.trim().toLowerCase();
-    if (!query) {
-      resetGrid(allItems);
-      return;
-    }
-    const filtered = allItems.filter(
-      (item) =>
-        item.username.toLowerCase().includes(query) ||
-        item.caption.toLowerCase().includes(query)
-    );
-    resetGrid(filtered);
+    videoObserver.disconnect();
+    activeVideos = new Set();
+    waitingVideos = new Set();
+    gridEl.innerHTML = "";
+    const visible = query
+      ? allItems.filter(
+          (item) =>
+            item.username.toLowerCase().includes(query) ||
+            item.caption.toLowerCase().includes(query)
+        )
+      : allItems;
+    filteredItems = visible;
+    const fragment = document.createDocumentFragment();
+    visible.forEach((item) => fragment.appendChild(cardTemplate(item)));
+    gridEl.appendChild(fragment);
   }, 200);
 });
 
 refreshBtnEl.addEventListener("click", () => {
-  allItems = generateMockData(TOTAL_CLIPS, Date.now());
   searchInputEl.value = "";
-  resetGrid(allItems);
+  resetGrid();
 });
 
 const modalOverlayEl = document.getElementById("modalOverlay");
 const modalVideoEl = document.getElementById("modalVideo");
+const modalIframeEl = document.getElementById("modalIframe");
 const modalUsernameEl = document.getElementById("modalUsername");
 const modalCaptionEl = document.getElementById("modalCaption");
 const modalLikesEl = document.getElementById("modalLikes");
@@ -260,17 +344,30 @@ const nextBtn = document.getElementById("nextBtn");
 let currentModalId = null;
 
 function openModal(id) {
-  currentModalId = id;
   const item = allItems.find((i) => i.id === id);
   if (!item) return;
-  modalVideoEl.src = item.video;
-  modalVideoEl.currentTime = 0;
-  modalVideoEl.play().catch(() => {});
+  currentModalId = id;
+
+  if (item.source === "youtube") {
+    modalVideoEl.pause();
+    modalVideoEl.src = "";
+    modalVideoEl.classList.add("hidden");
+    modalIframeEl.src = `https://www.youtube.com/embed/${item.videoId}?autoplay=1&playsinline=1`;
+    modalIframeEl.classList.remove("hidden");
+  } else {
+    modalIframeEl.src = "";
+    modalIframeEl.classList.add("hidden");
+    modalVideoEl.classList.remove("hidden");
+    modalVideoEl.src = item.videoUrl;
+    modalVideoEl.currentTime = 0;
+    modalVideoEl.play().catch(() => {});
+  }
+
   modalUsernameEl.textContent = item.username;
   modalCaptionEl.textContent = item.caption;
   modalLikesEl.textContent = formatCount(item.likes);
   modalCommentsEl.textContent = formatCount(item.comments);
-  modalSharesEl.textContent = formatCount(item.shares);
+  modalSharesEl.textContent = formatCount(item.views);
   modalOverlayEl.classList.remove("hidden");
 }
 
@@ -278,14 +375,17 @@ function closeModal() {
   modalOverlayEl.classList.add("hidden");
   modalVideoEl.pause();
   modalVideoEl.src = "";
+  modalIframeEl.src = "";
   currentModalId = null;
 }
 
 function navigateModal(direction) {
   if (currentModalId === null) return;
-  const newId = currentModalId + direction;
-  if (newId < 1 || newId > TOTAL_CLIPS) return;
-  openModal(newId);
+  const idx = filteredItems.findIndex((i) => i.id === currentModalId);
+  if (idx === -1) return;
+  const nextIdx = idx + direction;
+  if (nextIdx < 0 || nextIdx >= filteredItems.length) return;
+  openModal(filteredItems[nextIdx].id);
 }
 
 closeModalBtn.addEventListener("click", closeModal);
@@ -301,4 +401,4 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") navigateModal(-1);
 });
 
-loadNextBatch();
+loadMore();

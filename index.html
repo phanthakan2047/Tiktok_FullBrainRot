@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FullBrainRot — Mock TikTok Explorer</title>
+<title>FullBrainRot — Real Clip Explorer</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">🧠 FullBrainRot</div>
     <input id="searchInput" class="search" type="text" placeholder="ค้นหา username หรือ caption...">
-    <button id="refreshBtn" class="refresh-btn">🔄 สุ่มคลิปใหม่</button>
-    <div class="counter">โหลดแล้ว <span id="loadedCount">0</span> / <span id="totalCount">0</span> คลิป</div>
+    <button id="refreshBtn" class="refresh-btn">🔄 โหลดคลิปใหม่</button>
+    <div class="counter"><span id="statusText">กำลังโหลด...</span> โหลดแล้ว <span id="loadedCount">0</span> คลิป</div>
   </header>
 
   <main id="grid" class="grid"></main>
@@ -22,20 +22,22 @@
     <div class="modal-player">
       <button id="closeModal" class="close-btn">&times;</button>
       <button id="prevBtn" class="nav-btn prev">&#8249;</button>
-      <video id="modalVideo" class="modal-video" loop playsinline></video>
+      <video id="modalVideo" class="modal-video hidden" loop playsinline></video>
+      <iframe id="modalIframe" class="modal-video hidden" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
       <div class="modal-info">
         <div class="modal-user">@<span id="modalUsername"></span></div>
         <div class="modal-caption" id="modalCaption"></div>
         <div class="modal-stats">
           <span>❤️ <span id="modalLikes"></span></span>
           <span>💬 <span id="modalComments"></span></span>
-          <span>↗️ <span id="modalShares"></span></span>
+          <span>👁️ <span id="modalShares"></span></span>
         </div>
       </div>
       <button id="nextBtn" class="nav-btn next">&#8250;</button>
     </div>
   </div>
 
+  <script src="config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

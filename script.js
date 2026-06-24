@@ -1,6 +1,5 @@
 const TOTAL_CLIPS = 1000;
 const BATCH_SIZE = 60;
-const MAX_ACTIVE_VIDEOS = 20;
 
 const USERNAMES = [
   "brainrot.king", "skibidi.lord", "ohio.final.boss", "gyatt.machine", "rizz.god",
@@ -40,6 +39,8 @@ const TOPICS = [
   "ฉบับที่ {n}",
 ];
 
+// Used only inside the full-screen modal (one video at a time, so network
+// limits / file size never become an issue there).
 const SAMPLE_VIDEOS = [
   "https://www.w3schools.com/html/mov_bbb.mp4",
   "https://media.w3.org/2010/05/sintel/trailer.mp4",
@@ -65,21 +66,6 @@ function formatCount(n) {
   return String(n);
 }
 
-function makePoster(id, seedOffset) {
-  const hue = (id * 53 + seedOffset * 7) % 360;
-  const hue2 = (hue + 45) % 360;
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="533">` +
-    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
-    `<stop offset="0%" stop-color="hsl(${hue},70%,42%)"/>` +
-    `<stop offset="100%" stop-color="hsl(${hue2},70%,22%)"/>` +
-    `</linearGradient></defs>` +
-    `<rect width="300" height="533" fill="url(#g)"/>` +
-    `<text x="50%" y="50%" font-size="80" text-anchor="middle" dominant-baseline="middle" fill="white" opacity="0.85" font-family="sans-serif">#${id}</text>` +
-    `</svg>`;
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
 function generateMockData(total, seedOffset = 0) {
   const items = [];
   for (let i = 1; i <= total; i++) {
@@ -87,11 +73,19 @@ function generateMockData(total, seedOffset = 0) {
     const username = USERNAMES[Math.floor(rand() * USERNAMES.length)];
     const hook = HOOKS[Math.floor(rand() * HOOKS.length)];
     const topic = TOPICS[Math.floor(rand() * TOPICS.length)].replace("{n}", i);
+    const hue = Math.floor(rand() * 360);
     items.push({
       id: i,
       username: `${username}${Math.floor(rand() * 999)}`,
       caption: `${hook} — ${topic}`,
-      thumbnail: makePoster(i, seedOffset),
+      hue,
+      blobs: Array.from({ length: 4 }, () => ({
+        speed: 0.4 + rand() * 0.8,
+        offset: rand() * Math.PI * 2,
+        radiusX: 0.18 + rand() * 0.14,
+        radiusY: 0.18 + rand() * 0.14,
+        hueShift: Math.floor(rand() * 120),
+      })),
       video: SAMPLE_VIDEOS[Math.floor(rand() * SAMPLE_VIDEOS.length)],
       views: Math.floor(rand() * 5_000_000) + 1000,
       likes: Math.floor(rand() * 900_000) + 100,
@@ -116,45 +110,66 @@ const refreshBtnEl = document.getElementById("refreshBtn");
 
 totalCountEl.textContent = TOTAL_CLIPS;
 
-let activeVideos = new Set();
-let waitingVideos = new Set();
+const CANVAS_W = 180;
+const CANVAS_H = 320;
 
-function tryPlayVideo(video) {
-  if (activeVideos.size >= MAX_ACTIVE_VIDEOS) {
-    waitingVideos.add(video);
-    return;
-  }
-  waitingVideos.delete(video);
-  activeVideos.add(video);
-  if (!video.src) video.src = video.dataset.src;
-  video.play().catch(() => {});
+function drawFrame(canvas, item, t) {
+  const ctx = canvas.__ctx;
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  const grad = ctx.createLinearGradient(0, 0, CANVAS_W, CANVAS_H);
+  grad.addColorStop(0, `hsl(${item.hue}, 65%, 38%)`);
+  grad.addColorStop(1, `hsl(${(item.hue + 60) % 360}, 65%, 16%)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  item.blobs.forEach((b, idx) => {
+    const phase = t * b.speed + b.offset;
+    const x = CANVAS_W / 2 + Math.sin(phase) * CANVAS_W * 0.3;
+    const y = CANVAS_H / 2 + Math.cos(phase * 1.4 + idx) * CANVAS_H * 0.3;
+    ctx.beginPath();
+    ctx.fillStyle = `hsla(${(item.hue + b.hueShift) % 360}, 75%, 60%, 0.5)`;
+    ctx.ellipse(x, y, CANVAS_W * b.radiusX, CANVAS_H * b.radiusY, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.font = "bold 30px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(`#${item.id}`, CANVAS_W / 2, CANVAS_H / 2);
 }
 
-function releaseVideo(video) {
-  const wasActive = activeVideos.delete(video);
-  waitingVideos.delete(video);
-  video.pause();
-  if (video.src) {
-    video.removeAttribute("src");
-    video.load();
-  }
-  if (wasActive) {
-    const next = waitingVideos.values().next().value;
-    if (next) tryPlayVideo(next);
-  }
+const runningCanvases = new Map();
+
+function startAnimation(canvas) {
+  if (runningCanvases.has(canvas)) return;
+  const item = canvas.__item;
+  const start = performance.now();
+  const tick = (now) => {
+    drawFrame(canvas, item, (now - start) / 1000);
+    runningCanvases.set(canvas, requestAnimationFrame(tick));
+  };
+  runningCanvases.set(canvas, requestAnimationFrame(tick));
 }
 
-const videoObserver = new IntersectionObserver(
+function stopAnimation(canvas) {
+  const rafId = runningCanvases.get(canvas);
+  if (rafId) cancelAnimationFrame(rafId);
+  runningCanvases.delete(canvas);
+}
+
+const animationObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        tryPlayVideo(entry.target);
+        startAnimation(entry.target);
       } else {
-        releaseVideo(entry.target);
+        stopAnimation(entry.target);
       }
     });
   },
-  { rootMargin: "100px 0px", threshold: 0.25 }
+  { rootMargin: "150px 0px", threshold: 0.1 }
 );
 
 function cardTemplate(item) {
@@ -162,14 +177,17 @@ function cardTemplate(item) {
   card.className = "card";
   card.dataset.id = item.id;
   card.innerHTML = `
-    <video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail}" data-src="${item.video}"></video>
+    <canvas class="card-media" width="${CANVAS_W}" height="${CANVAS_H}"></canvas>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
       <div class="card-views">▶ ${formatCount(item.views)}</div>
     </div>
   `;
+  const canvas = card.querySelector(".card-media");
+  canvas.__ctx = canvas.getContext("2d");
+  canvas.__item = item;
   card.addEventListener("click", () => openModal(item.id));
-  videoObserver.observe(card.querySelector(".card-media"));
+  animationObserver.observe(canvas);
   return card;
 }
 
@@ -184,9 +202,9 @@ function loadNextBatch() {
 }
 
 function resetGrid(items) {
-  videoObserver.disconnect();
-  activeVideos = new Set();
-  waitingVideos = new Set();
+  animationObserver.disconnect();
+  runningCanvases.forEach((rafId) => cancelAnimationFrame(rafId));
+  runningCanvases.clear();
   filteredItems = items;
   loadedCount = 0;
   gridEl.innerHTML = "";

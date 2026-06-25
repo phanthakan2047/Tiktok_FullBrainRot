@@ -45,6 +45,12 @@ function shuffle(arr) {
   return arr;
 }
 
+function extractHashtags(text) {
+  if (!text) return [];
+  const matches = text.match(/#[^\s#]+/gu) || [];
+  return matches.map((t) => t.slice(1).toLowerCase()).filter(Boolean);
+}
+
 let ytQueryIndex = 0;
 const ytPageTokens = {};
 const ytExhausted = new Set();
@@ -178,6 +184,7 @@ const loadedCountEl = document.getElementById("loadedCount");
 const statusTextEl = document.getElementById("statusText");
 const searchInputEl = document.getElementById("searchInput");
 const refreshBtnEl = document.getElementById("refreshBtn");
+const tagBarEl = document.getElementById("tagBar");
 
 let activeVideos = new Set();
 let waitingVideos = new Set();
@@ -324,6 +331,9 @@ function cardTemplate(item) {
 }
 
 function appendItems(items) {
+  items.forEach((item) => {
+    item.tags = extractHashtags(item.caption);
+  });
   allItems = allItems.concat(items);
   filteredItems = filteredItems.concat(items);
   const fragment = document.createDocumentFragment();
@@ -331,6 +341,34 @@ function appendItems(items) {
   gridEl.appendChild(fragment);
   loadedCount += items.length;
   loadedCountEl.textContent = loadedCount;
+  renderTagBar();
+}
+
+function renderTagBar() {
+  const counts = new Map();
+  allItems.forEach((item) => {
+    item.tags.forEach((tag) => counts.set(tag, (counts.get(tag) || 0) + 1));
+  });
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 16);
+
+  tagBarEl.innerHTML = "";
+  tagBarEl.classList.toggle("hidden", top.length === 0);
+
+  const activeQuery = searchInputEl.value.trim().toLowerCase();
+  const fragment = document.createDocumentFragment();
+  top.forEach(([tag, count]) => {
+    const chip = document.createElement("button");
+    chip.className = "tag-chip";
+    chip.classList.toggle("active", activeQuery === `#${tag}`);
+    chip.textContent = `#${tag}`;
+    chip.title = `${count} คลิป`;
+    chip.addEventListener("click", () => {
+      searchInputEl.value = `#${tag}`;
+      applyFilter(searchInputEl.value);
+    });
+    fragment.appendChild(chip);
+  });
+  tagBarEl.appendChild(fragment);
 }
 
 async function loadMore() {
@@ -378,6 +416,8 @@ function resetGrid() {
   redditExhausted.clear();
   gridEl.innerHTML = "";
   loadedCountEl.textContent = 0;
+  tagBarEl.innerHTML = "";
+  tagBarEl.classList.add("hidden");
   loadMore();
 }
 
@@ -391,27 +431,38 @@ const scrollObserver = new IntersectionObserver(
 );
 scrollObserver.observe(sentinelEl);
 
+function applyFilter(rawQuery) {
+  const query = rawQuery.trim().toLowerCase();
+  videoObserver.disconnect();
+  activeVideos = new Set();
+  waitingVideos = new Set();
+  gridEl.innerHTML = "";
+
+  let visible;
+  if (!query) {
+    visible = allItems;
+  } else if (query.startsWith("#")) {
+    const tag = query.slice(1);
+    visible = tag ? allItems.filter((item) => item.tags.some((t) => t.includes(tag))) : allItems;
+  } else {
+    visible = allItems.filter(
+      (item) =>
+        item.username.toLowerCase().includes(query) ||
+        item.caption.toLowerCase().includes(query)
+    );
+  }
+
+  filteredItems = visible;
+  const fragment = document.createDocumentFragment();
+  visible.forEach((item) => fragment.appendChild(cardTemplate(item)));
+  gridEl.appendChild(fragment);
+  renderTagBar();
+}
+
 let searchDebounce;
 searchInputEl.addEventListener("input", () => {
   clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(() => {
-    const query = searchInputEl.value.trim().toLowerCase();
-    videoObserver.disconnect();
-    activeVideos = new Set();
-    waitingVideos = new Set();
-    gridEl.innerHTML = "";
-    const visible = query
-      ? allItems.filter(
-          (item) =>
-            item.username.toLowerCase().includes(query) ||
-            item.caption.toLowerCase().includes(query)
-        )
-      : allItems;
-    filteredItems = visible;
-    const fragment = document.createDocumentFragment();
-    visible.forEach((item) => fragment.appendChild(cardTemplate(item)));
-    gridEl.appendChild(fragment);
-  }, 200);
+  searchDebounce = setTimeout(() => applyFilter(searchInputEl.value), 200);
 });
 
 refreshBtnEl.addEventListener("click", () => {

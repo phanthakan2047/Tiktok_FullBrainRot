@@ -62,6 +62,42 @@ body {
   max-width: 320px;
 }
 
+.tag-bar {
+  position: sticky;
+  top: 57px;
+  z-index: 9;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  overflow-x: auto;
+  background: #131314;
+  border-bottom: 1px solid #2a2a2c;
+  scrollbar-width: thin;
+}
+
+.tag-chip {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid #333;
+  background: #1f1f21;
+  color: #ddd;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tag-chip:hover {
+  background: #2a2a2c;
+}
+
+.tag-chip.active {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+  font-weight: 600;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));

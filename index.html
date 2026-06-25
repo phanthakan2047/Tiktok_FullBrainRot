@@ -11,6 +11,7 @@
     <div class="brand">🧠 FullBrainRot</div>
     <input id="searchInput" class="search" type="text" placeholder="ค้นหา username หรือ caption...">
     <button id="refreshBtn" class="refresh-btn">🔄 โหลดคลิปใหม่</button>
+    <button id="bookmarksBtn" class="refresh-btn">🔖 บุ๊คมาร์ค</button>
     <div class="counter"><span id="statusText">กำลังโหลด...</span> โหลดแล้ว <span id="loadedCount">0</span> คลิป</div>
   </header>
 
@@ -23,6 +24,7 @@
   <div id="modalOverlay" class="modal-overlay hidden">
     <div class="modal-player">
       <button id="closeModal" class="close-btn">&times;</button>
+      <button id="modalBookmarkBtn" class="bookmark-btn modal-bookmark-btn">🔖</button>
       <button id="prevBtn" class="nav-btn prev">&#8249;</button>
       <video id="modalVideo" class="modal-video hidden" loop playsinline></video>
       <iframe id="modalIframe" class="modal-video hidden" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>

@@ -177,6 +177,7 @@ let allItems = [];
 let filteredItems = [];
 let loadedCount = 0;
 let loading = false;
+let currentQuery = "";
 
 const gridEl = document.getElementById("grid");
 const sentinelEl = document.getElementById("sentinel");
@@ -184,7 +185,50 @@ const loadedCountEl = document.getElementById("loadedCount");
 const statusTextEl = document.getElementById("statusText");
 const searchInputEl = document.getElementById("searchInput");
 const refreshBtnEl = document.getElementById("refreshBtn");
+const bookmarksBtnEl = document.getElementById("bookmarksBtn");
 const tagBarEl = document.getElementById("tagBar");
+
+const BOOKMARKS_KEY = "fullbrainrot_bookmarks";
+const bookmarks = new Map();
+try {
+  const raw = localStorage.getItem(BOOKMARKS_KEY);
+  if (raw) JSON.parse(raw).forEach((item) => bookmarks.set(item.id, item));
+} catch (e) {
+  /* localStorage unavailable (e.g. private mode) — bookmarks just won't persist */
+}
+
+function saveBookmarks() {
+  try {
+    localStorage.setItem(BOOKMARKS_KEY, JSON.stringify([...bookmarks.values()]));
+  } catch (e) {}
+}
+
+function isBookmarked(id) {
+  return bookmarks.has(id);
+}
+
+function refreshBookmarkUI(id) {
+  const active = isBookmarked(id);
+  document.querySelectorAll(`.bookmark-btn[data-id="${CSS.escape(id)}"]`).forEach((btn) => {
+    btn.classList.toggle("active", active);
+  });
+  if (viewingBookmarks && !active) {
+    const card = gridEl.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
+    if (card) {
+      videoObserver.unobserve(card.querySelector(".card-media"));
+      card.remove();
+    }
+  }
+}
+
+function toggleBookmark(item) {
+  if (bookmarks.has(item.id)) bookmarks.delete(item.id);
+  else bookmarks.set(item.id, item);
+  saveBookmarks();
+  refreshBookmarkUI(item.id);
+}
+
+let viewingBookmarks = false;
 
 let activeVideos = new Set();
 let waitingVideos = new Set();
@@ -320,12 +364,17 @@ function cardTemplate(item) {
   card.innerHTML = `
     ${media}
     <div class="source-badge">${badge}</div>
+    <button class="bookmark-btn${isBookmarked(item.id) ? " active" : ""}" data-id="${item.id}" title="บุ๊คมาร์ค">🔖</button>
     <div class="card-overlay">
       <div class="card-caption">${item.caption}</div>
       <div class="card-views">▶ ${formatCount(item.views || item.likes)}</div>
     </div>
   `;
   card.addEventListener("click", () => openModal(item.id));
+  card.querySelector(".bookmark-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleBookmark(item);
+  });
   videoObserver.observe(card.querySelector(".card-media"));
   return card;
 }
@@ -335,13 +384,16 @@ function appendItems(items) {
     item.tags = extractHashtags(item.caption);
   });
   allItems = allItems.concat(items);
+  loadedCount += items.length;
+  loadedCountEl.textContent = loadedCount;
+  renderTagBar();
+
+  if (viewingBookmarks || currentQuery) return;
+
   filteredItems = filteredItems.concat(items);
   const fragment = document.createDocumentFragment();
   items.forEach((item) => fragment.appendChild(cardTemplate(item)));
   gridEl.appendChild(fragment);
-  loadedCount += items.length;
-  loadedCountEl.textContent = loadedCount;
-  renderTagBar();
 }
 
 function renderTagBar() {
@@ -408,6 +460,7 @@ function resetGrid() {
   allItems = [];
   filteredItems = [];
   loadedCount = 0;
+  currentQuery = "";
   ytQueryIndex = 0;
   redditSubIndex = 0;
   Object.keys(ytPageTokens).forEach((k) => delete ytPageTokens[k]);
@@ -433,6 +486,8 @@ scrollObserver.observe(sentinelEl);
 
 function applyFilter(rawQuery) {
   const query = rawQuery.trim().toLowerCase();
+  currentQuery = viewingBookmarks ? "" : query;
+  const sourceItems = viewingBookmarks ? [...bookmarks.values()] : allItems;
   videoObserver.disconnect();
   activeVideos = new Set();
   waitingVideos = new Set();
@@ -440,12 +495,12 @@ function applyFilter(rawQuery) {
 
   let visible;
   if (!query) {
-    visible = allItems;
+    visible = sourceItems;
   } else if (query.startsWith("#")) {
     const tag = query.slice(1);
-    visible = tag ? allItems.filter((item) => item.tags.some((t) => t.includes(tag))) : allItems;
+    visible = tag ? sourceItems.filter((item) => item.tags.some((t) => t.includes(tag))) : sourceItems;
   } else {
-    visible = allItems.filter(
+    visible = sourceItems.filter(
       (item) =>
         item.username.toLowerCase().includes(query) ||
         item.caption.toLowerCase().includes(query)
@@ -467,7 +522,20 @@ searchInputEl.addEventListener("input", () => {
 
 refreshBtnEl.addEventListener("click", () => {
   searchInputEl.value = "";
+  viewingBookmarks = false;
+  bookmarksBtnEl.classList.remove("active");
   resetGrid();
+});
+
+bookmarksBtnEl.addEventListener("click", () => {
+  viewingBookmarks = !viewingBookmarks;
+  bookmarksBtnEl.classList.toggle("active", viewingBookmarks);
+  bookmarksBtnEl.textContent = viewingBookmarks ? "⬅ กลับไปดูคลิป" : "🔖 บุ๊คมาร์ค";
+  searchInputEl.value = "";
+  applyFilter("");
+  if (viewingBookmarks) {
+    statusTextEl.textContent = bookmarks.size ? `บุ๊คมาร์คไว้ ${bookmarks.size} คลิป` : "ยังไม่มีคลิปที่บุ๊คมาร์คไว้";
+  }
 });
 
 const modalOverlayEl = document.getElementById("modalOverlay");
@@ -479,15 +547,18 @@ const modalLikesEl = document.getElementById("modalLikes");
 const modalCommentsEl = document.getElementById("modalComments");
 const modalSharesEl = document.getElementById("modalShares");
 const closeModalBtn = document.getElementById("closeModal");
+const modalBookmarkBtnEl = document.getElementById("modalBookmarkBtn");
 const prevBtn = document.getElementById("prevBtn");
 const nextBtn = document.getElementById("nextBtn");
 
 let currentModalId = null;
 
 function openModal(id) {
-  const item = allItems.find((i) => i.id === id);
+  const item = filteredItems.find((i) => i.id === id) || allItems.find((i) => i.id === id);
   if (!item) return;
   currentModalId = id;
+  modalBookmarkBtnEl.dataset.id = id;
+  modalBookmarkBtnEl.classList.toggle("active", isBookmarked(id));
 
   if (item.source === "youtube") {
     modalVideoEl.pause();
@@ -530,6 +601,13 @@ function navigateModal(direction) {
 }
 
 closeModalBtn.addEventListener("click", closeModal);
+modalBookmarkBtnEl.addEventListener("click", () => {
+  if (currentModalId === null) return;
+  const item = filteredItems.find((i) => i.id === currentModalId) || allItems.find((i) => i.id === currentModalId);
+  if (!item) return;
+  toggleBookmark(item);
+  modalBookmarkBtnEl.classList.toggle("active", isBookmarked(item.id));
+});
 prevBtn.addEventListener("click", () => navigateModal(-1));
 nextBtn.addEventListener("click", () => navigateModal(1));
 modalOverlayEl.addEventListener("click", (e) => {

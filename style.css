@@ -53,6 +53,12 @@ body {
   background: #2a2a2c;
 }
 
+.refresh-btn.active {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+}
+
 .counter {
   font-size: 13px;
   color: #aaa;
@@ -138,6 +144,28 @@ body {
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
+}
+
+.bookmark-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.bookmark-btn.active {
+  background: #ffcc33;
+  color: #111;
+  opacity: 1;
 }
 
 .card-overlay {
@@ -258,6 +286,15 @@ body {
   color: #fff;
   font-size: 24px;
   cursor: pointer;
+}
+
+.modal-bookmark-btn {
+  top: 10px;
+  left: 10px;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  opacity: 1;
 }
 
 .nav-btn.prev {

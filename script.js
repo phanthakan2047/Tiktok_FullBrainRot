@@ -200,13 +200,36 @@ function releaseMedia(media) {
   }
 }
 
+const releaseTimers = new WeakMap();
+const RELEASE_GRACE_MS = 1200;
+
+function cancelScheduledRelease(media) {
+  const timer = releaseTimers.get(media);
+  if (timer) {
+    clearTimeout(timer);
+    releaseTimers.delete(media);
+  }
+}
+
+function scheduleRelease(media) {
+  cancelScheduledRelease(media);
+  releaseTimers.set(
+    media,
+    setTimeout(() => {
+      releaseTimers.delete(media);
+      releaseMedia(media);
+    }, RELEASE_GRACE_MS)
+  );
+}
+
 const videoObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
+        cancelScheduledRelease(entry.target);
         tryPlayMedia(entry.target);
       } else {
-        releaseMedia(entry.target);
+        scheduleRelease(entry.target);
       }
     });
   },

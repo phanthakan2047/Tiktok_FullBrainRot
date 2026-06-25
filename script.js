@@ -1,6 +1,17 @@
 const BATCH_VIDEO_RESULTS = 50;
 const MAX_ACTIVE_VIDEOS = 16;
 
+let ytApiReady = false;
+const ytApiQueue = [];
+window.onYouTubeIframeAPIReady = () => {
+  ytApiReady = true;
+  while (ytApiQueue.length) ytApiQueue.shift()();
+};
+function whenYtApiReady(fn) {
+  if (ytApiReady) fn();
+  else ytApiQueue.push(fn);
+}
+
 const YT_QUERIES = [
   "skibidi toilet shorts",
   "ohio rizz shorts",
@@ -171,6 +182,45 @@ const refreshBtnEl = document.getElementById("refreshBtn");
 let activeVideos = new Set();
 let waitingVideos = new Set();
 
+function setupYtPlayer(slot) {
+  if (slot._ytSetup) return;
+  slot._ytSetup = true;
+  whenYtApiReady(() => {
+    if (!slot.isConnected) return;
+    new YT.Player(slot, {
+      videoId: slot.dataset.videoId,
+      width: "100%",
+      height: "100%",
+      playerVars: {
+        autoplay: 1,
+        mute: 1,
+        controls: 0,
+        playsinline: 1,
+        modestbranding: 1,
+        rel: 0,
+      },
+      events: {
+        onReady: (e) => {
+          const iframe = e.target.getIframe();
+          iframe.classList.add("card-media");
+          iframe._ytPlayer = e.target;
+          videoObserver.unobserve(slot);
+          videoObserver.observe(iframe);
+          if (activeVideos.delete(slot)) activeVideos.add(iframe);
+          if (waitingVideos.delete(slot)) waitingVideos.add(iframe);
+          e.target.playVideo();
+        },
+        onStateChange: (e) => {
+          if (e.data === YT.PlayerState.ENDED) {
+            e.target.seekTo(0);
+            e.target.playVideo();
+          }
+        },
+      },
+    });
+  });
+}
+
 function tryPlayMedia(media) {
   if (activeVideos.size >= MAX_ACTIVE_VIDEOS) {
     waitingVideos.add(media);
@@ -178,22 +228,31 @@ function tryPlayMedia(media) {
   }
   waitingVideos.delete(media);
   activeVideos.add(media);
-  if (!media.src) media.src = media.dataset.src;
-  if (media.tagName === "VIDEO") media.play().catch(() => {});
+
+  if (media.tagName === "VIDEO") {
+    if (!media.src) media.src = media.dataset.src;
+    media.play().catch(() => {});
+  } else if (media._ytPlayer) {
+    media._ytPlayer.playVideo();
+  } else {
+    setupYtPlayer(media);
+  }
 }
 
 function releaseMedia(media) {
   const wasActive = activeVideos.delete(media);
   waitingVideos.delete(media);
+
   if (media.tagName === "VIDEO") {
     media.pause();
     if (media.src) {
       media.removeAttribute("src");
       media.load();
     }
-  } else {
-    media.removeAttribute("src");
+  } else if (media._ytPlayer) {
+    media._ytPlayer.pauseVideo();
   }
+
   if (wasActive) {
     const next = waitingVideos.values().next().value;
     if (next) tryPlayMedia(next);
@@ -245,7 +304,7 @@ function cardTemplate(item) {
   const media =
     item.source === "reddit"
       ? `<video class="card-media" muted loop playsinline preload="none" data-src="${item.videoUrl}"></video>`
-      : `<iframe class="card-media" frameborder="0" allow="autoplay; encrypted-media" data-src="https://www.youtube.com/embed/${item.videoId}?autoplay=1&mute=1&playsinline=1&controls=0&modestbranding=1&rel=0&loop=1&playlist=${item.videoId}"></iframe>`;
+      : `<div class="card-media" data-video-id="${item.videoId}"></div>`;
 
   if (item.thumbnail) card.style.backgroundImage = `url("${item.thumbnail}")`;
   card.style.backgroundSize = "cover";

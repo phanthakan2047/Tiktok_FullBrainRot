@@ -171,28 +171,32 @@ const refreshBtnEl = document.getElementById("refreshBtn");
 let activeVideos = new Set();
 let waitingVideos = new Set();
 
-function tryPlayVideo(video) {
+function tryPlayMedia(media) {
   if (activeVideos.size >= MAX_ACTIVE_VIDEOS) {
-    waitingVideos.add(video);
+    waitingVideos.add(media);
     return;
   }
-  waitingVideos.delete(video);
-  activeVideos.add(video);
-  if (!video.src) video.src = video.dataset.src;
-  video.play().catch(() => {});
+  waitingVideos.delete(media);
+  activeVideos.add(media);
+  if (!media.src) media.src = media.dataset.src;
+  if (media.tagName === "VIDEO") media.play().catch(() => {});
 }
 
-function releaseVideo(video) {
-  const wasActive = activeVideos.delete(video);
-  waitingVideos.delete(video);
-  video.pause();
-  if (video.src) {
-    video.removeAttribute("src");
-    video.load();
+function releaseMedia(media) {
+  const wasActive = activeVideos.delete(media);
+  waitingVideos.delete(media);
+  if (media.tagName === "VIDEO") {
+    media.pause();
+    if (media.src) {
+      media.removeAttribute("src");
+      media.load();
+    }
+  } else {
+    media.removeAttribute("src");
   }
   if (wasActive) {
     const next = waitingVideos.values().next().value;
-    if (next) tryPlayVideo(next);
+    if (next) tryPlayMedia(next);
   }
 }
 
@@ -200,9 +204,9 @@ const videoObserver = new IntersectionObserver(
   (entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        tryPlayVideo(entry.target);
+        tryPlayMedia(entry.target);
       } else {
-        releaseVideo(entry.target);
+        releaseMedia(entry.target);
       }
     });
   },
@@ -217,8 +221,12 @@ function cardTemplate(item) {
   const badge = item.source === "youtube" ? "▶️ YouTube" : "👽 Reddit";
   const media =
     item.source === "reddit"
-      ? `<video class="card-media" muted loop playsinline preload="none" poster="${item.thumbnail || ""}" data-src="${item.videoUrl}"></video>`
-      : `<img class="card-media" src="${item.thumbnail || ""}" alt="${item.caption}" loading="lazy">`;
+      ? `<video class="card-media" muted loop playsinline preload="none" data-src="${item.videoUrl}"></video>`
+      : `<iframe class="card-media" frameborder="0" allow="autoplay; encrypted-media" data-src="https://www.youtube.com/embed/${item.videoId}?autoplay=1&mute=1&playsinline=1&controls=0&modestbranding=1&rel=0&loop=1&playlist=${item.videoId}"></iframe>`;
+
+  if (item.thumbnail) card.style.backgroundImage = `url("${item.thumbnail}")`;
+  card.style.backgroundSize = "cover";
+  card.style.backgroundPosition = "center";
 
   card.innerHTML = `
     ${media}
@@ -229,9 +237,7 @@ function cardTemplate(item) {
     </div>
   `;
   card.addEventListener("click", () => openModal(item.id));
-  if (item.source === "reddit") {
-    videoObserver.observe(card.querySelector(".card-media"));
-  }
+  videoObserver.observe(card.querySelector(".card-media"));
   return card;
 }
 

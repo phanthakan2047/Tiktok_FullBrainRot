@@ -75,7 +75,7 @@ body {
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
-  background: #1a1a1c;
+  background-color: #1a1a1c;
 }
 
 .card-media {
@@ -83,7 +83,7 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
-  background: #1a1a1c;
+  background: transparent;
   transition: transform 0.2s ease;
 }
 
